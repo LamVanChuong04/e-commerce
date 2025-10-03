@@ -1,0 +1,68 @@
+server:
+  port: 8686
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/shopapp
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 250104
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+      dialect: org.hibernate.dialect.MySQL8Dialect
+      format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+  messages:
+    basename: i18n/messages
+    encoding: UTF-8
+    default-locale: en
+  
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+api:
+  prefix: /api/v1
+jwt:
+  expiration: 2592000 #30 days = 30 * 24 * 60 * 60
+  expiration-refresh-token: 5184000 #60 days = 60 * 24 * 60 * 60
+  secretKey: TaqlmGv1iEDMRiFp/pHuID1+T84IABfuA0xXh4GhiUI=
+
+logging:
+  level:
+    org:
+      springframework.security: DEBUG
+
+# swagger-ui custom path
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /api-docs
+  show-actuator: true
+
+#health check
+management:
+  endpoint:
+    health:
+      show-details: always
+  endpoints:
+    web:
+      base-path: /api/v1/actuator
+      exposure:
+        #include: "health"
+        include: "health, info"
+vnpay:
+  pay-url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
+  return-url: "${VNPAY_RETURN_URI:http://localhost:4200/payments/payment-callback}"
+  tmn-code: "OMZF7JB7" # Add your TMN code here
+  secret-key: "J6S80U7KQ2LKSIK0Q8QJK6K8LVVGPUVD" # Add your secret key here
+  api-url: "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"
+
+
