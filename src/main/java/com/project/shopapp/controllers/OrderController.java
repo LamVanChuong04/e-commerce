@@ -61,7 +61,7 @@ public class OrderController {
                         .build());
     }
     @GetMapping("/user/{user_id}") // Thêm biến đường dẫn "user_id"
-    //GET http://localhost:8088/api/v1/orders/user/4
+    //GET http://localhost:8686/api/v1/orders/user/4
     public ResponseEntity<ResponseObject> getOrders(@Valid @PathVariable("user_id") Long userId) {
         User loginUser = securityUtils.getLoggedInUser();
         boolean isUserIdBlank = userId == null || userId <= 0;

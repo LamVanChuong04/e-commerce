@@ -31,84 +31,80 @@ public class OrderService implements IOrderService{
     private final ModelMapper modelMapper;
 
     @Override
-    @Transactional
-    public Order createOrder(OrderDTO orderDTO) throws Exception {
-        //tìm xem user'id có tồn tại ko
-        User user = userRepository
-                .findById(orderDTO.getUserId())
-                .orElseThrow(() -> new DataNotFoundException("Cannot find user with id: "+orderDTO.getUserId()));
-        //convert orderDTO => Order
-        //dùng thư viện Model Mapper
-        // Tạo một luồng bảng ánh xạ riêng để kiểm soát việc ánh xạ
-        modelMapper.typeMap(OrderDTO.class, Order.class)
-                .addMappings(mapper -> mapper.skip(Order::setId));
-        // Cập nhật các trường của đơn hàng từ orderDTO
-        Order order = new Order();
-        modelMapper.map(orderDTO, order);
-        order.setUser(user);
-        order.setOrderDate(LocalDateTime.now());//lấy thời điểm hiện tại
-        order.setStatus(OrderStatus.PENDING);
-        //Kiểm tra shipping date phải >= ngày hôm nay
-        LocalDate shippingDate = orderDTO.getShippingDate() == null
-                ? LocalDate.now() : orderDTO.getShippingDate();
-        if (shippingDate.isBefore(LocalDate.now())) {
-            throw new DataNotFoundException("Date must be at least today !");
-        }
-        order.setShippingDate(shippingDate);
-        order.setActive(true);//đoạn này nên set sẵn trong sql
-        //EAV-Entity-Attribute-Value model
-        order.setTotalMoney(orderDTO.getTotalMoney());
-        // Lưu vnpTxnRef nếu có
-        if (orderDTO.getVnpTxnRef() != null) {
-            order.setVnpTxnRef(orderDTO.getVnpTxnRef());
-        }
-        if(orderDTO.getShippingAddress() == null) {
-            order.setShippingAddress(orderDTO.getAddress());
-        }
-        // Tạo danh sách các đối tượng OrderDetail từ cartItems
-        List<OrderDetail> orderDetails = new ArrayList<>();
-        for (CartItemDTO cartItemDTO : orderDTO.getCartItems()) {
-            // Tạo một đối tượng OrderDetail từ CartItemDTO
-            OrderDetail orderDetail = new OrderDetail();
-            orderDetail.setOrder(order);
+@Transactional
+public Order createOrder(OrderDTO orderDTO) throws Exception {
+    User user = userRepository
+            .findById(orderDTO.getUserId())
+            .orElseThrow(() -> new DataNotFoundException("Cannot find user with id: " + orderDTO.getUserId()));
 
-            // Lấy thông tin sản phẩm từ cartItemDTO
-            Long productId = cartItemDTO.getProductId();
-            int quantity = cartItemDTO.getQuantity();
+    modelMapper.typeMap(OrderDTO.class, Order.class)
+            .addMappings(mapper -> mapper.skip(Order::setId));
 
-            // Tìm thông tin sản phẩm từ cơ sở dữ liệu (hoặc sử dụng cache nếu cần)
-            Product product = productRepository.findById(productId)
-                    .orElseThrow(() -> new DataNotFoundException("Product not found with id: " + productId));
+    Order order = new Order();
+    modelMapper.map(orderDTO, order);
+    order.setUser(user);
+    order.setOrderDate(LocalDateTime.now());
+    order.setStatus(OrderStatus.PENDING);
 
-            // Đặt thông tin cho OrderDetail
-            orderDetail.setProduct(product);
-            orderDetail.setNumberOfProducts(quantity);
-            // Các trường khác của OrderDetail nếu cần
-            orderDetail.setPrice(product.getPrice());
-
-            // Thêm OrderDetail vào danh sách
-            orderDetails.add(orderDetail);
-        }
-
-        //coupon
-        String couponCode = orderDTO.getCouponCode();
-        if (!couponCode.isEmpty()) {
-            Coupon coupon = couponRepository.findByCode(couponCode)
-                    .orElseThrow(() -> new IllegalArgumentException("Coupon not found"));
-
-            if (!coupon.isActive()) {
-                throw new IllegalArgumentException("Coupon is not active");
-            }
-
-            order.setCoupon(coupon);
-        } else {
-            order.setCoupon(null);
-        }
-        // Lưu danh sách OrderDetail vào cơ sở dữ liệu
-        orderDetailRepository.saveAll(orderDetails);
-        orderRepository.save(order);
-        return order;
+    LocalDate shippingDate = orderDTO.getShippingDate() == null
+            ? LocalDate.now() : orderDTO.getShippingDate();
+    if (shippingDate.isBefore(LocalDate.now())) {
+        throw new DataNotFoundException("Date must be at least today!");
     }
+    order.setShippingDate(shippingDate);
+    order.setActive(true);
+
+    // coupon
+    String couponCode = orderDTO.getCouponCode();
+    if (couponCode != null && !couponCode.isEmpty()) {
+        Coupon coupon = couponRepository.findByCode(couponCode)
+                .orElseThrow(() -> new IllegalArgumentException("Coupon not found"));
+        if (!coupon.isActive()) {
+            throw new IllegalArgumentException("Coupon is not active");
+        }
+        order.setCoupon(coupon);
+    } else {
+        order.setCoupon(null);
+    }
+
+    // 🔹 Lưu order trước để có ID
+    orderRepository.save(order);
+
+    List<OrderDetail> orderDetails = new ArrayList<>();
+    float totalMoney = 0f;
+
+    for (CartItemDTO cartItemDTO : orderDTO.getCartItems()) {
+        Long productId = cartItemDTO.getProductId();
+        int quantity = cartItemDTO.getQuantity();
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new DataNotFoundException("Product not found with id: " + productId));
+
+        OrderDetail orderDetail = new OrderDetail();
+        orderDetail.setOrder(order);
+        orderDetail.setProduct(product);
+        orderDetail.setNumberOfProducts(quantity);
+        orderDetail.setPrice(product.getPrice());
+
+        // 🔹 Tính totalMoney cho từng OrderDetail (float)
+        float itemTotal = product.getPrice() * quantity;
+        orderDetail.setTotalMoney(itemTotal);
+
+        totalMoney += itemTotal;
+
+        orderDetails.add(orderDetail);
+    }
+
+    // 🔹 Update lại totalMoney cho Order
+    order.setTotalMoney(totalMoney);
+    orderRepository.save(order);
+
+    // 🔹 Lưu danh sách OrderDetail sau khi Order đã có ID
+    orderDetailRepository.saveAll(orderDetails);
+
+    return order;
+}
+
     @Transactional
     public Order updateOrderWithDetails(OrderWithDetailsDTO orderWithDetailsDTO) {
         modelMapper.typeMap(OrderWithDetailsDTO.class, Order.class)
